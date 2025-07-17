@@ -15,22 +15,19 @@ class StegaChatUI:
         self.root.title("StegaChat - Secure Image Steganography")
         self.root.geometry("600x500")
 
-        # Store current encryption key and salt
         self.current_fernet = None
         self.current_salt = None
 
+        self.privacy_notice_shown = False  # New flag
         self.setup_ui()
 
     def setup_ui(self):
-        # Main frame
         main_frame = tk.Frame(self.root, padx=20, pady=20)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Title
         title_label = tk.Label(main_frame, text="StegaChat", font=("Arial", 16, "bold"))
         title_label.pack(pady=(0, 20))
 
-        # Message input section
         input_frame = tk.LabelFrame(main_frame, text="Message Input", padx=10, pady=10)
         input_frame.pack(fill=tk.X, pady=(0, 10))
 
@@ -41,7 +38,10 @@ class StegaChatUI:
         mic_btn = tk.Button(input_frame, text="🎤 Voice Input", command=self.start_voice_input, bg="#FF9800", fg="white")
         mic_btn.pack(anchor=tk.W, padx=5, pady=(0, 5))
 
-        # Encryption section
+        # 🆕 Status label for voice recognition state
+        self.voice_status_label = tk.Label(input_frame, text="", fg="gray")
+        self.voice_status_label.pack(anchor=tk.W, padx=5, pady=(0, 5))
+
         encrypt_frame = tk.LabelFrame(main_frame, text="Encryption", padx=10, pady=10)
         encrypt_frame.pack(fill=tk.X, pady=(0, 10))
 
@@ -54,7 +54,6 @@ class StegaChatUI:
         self.password_entry = tk.Entry(self.password_frame, show="*", width=30)
         self.password_entry.pack(side=tk.LEFT, padx=(5, 0))
 
-        # Buttons section
         button_frame = tk.Frame(main_frame)
         button_frame.pack(fill=tk.X, pady=(0, 10))
 
@@ -64,14 +63,12 @@ class StegaChatUI:
         self.decode_button = tk.Button(button_frame, text="Decode Message", command=self.decode_message, bg="#2196F3", fg="white", font=("Arial", 10, "bold"))
         self.decode_button.pack(side=tk.LEFT)
 
-        # Status section
         status_frame = tk.LabelFrame(main_frame, text="Status", padx=10, pady=10)
         status_frame.pack(fill=tk.BOTH, expand=True)
 
         self.status_text = tk.Text(status_frame, height=8, state=tk.DISABLED)
         self.status_text.pack(fill=tk.BOTH, expand=True)
 
-        # Initially hide password frame
         self.password_frame.pack_forget()
 
     def on_encrypt_toggle(self):
@@ -88,22 +85,57 @@ class StegaChatUI:
         self.status_text.see(tk.END)
         self.status_text.config(state=tk.DISABLED)
 
+    # ✅ Enhanced voice input with feedback, privacy notice, error handling
     def start_voice_input(self):
+        if not self.privacy_notice_shown:
+            messagebox.showinfo(
+                "Privacy Notice",
+                "Your voice input will be processed using Google's Speech Recognition API.\nEnsure you're connected to the internet."
+            )
+            self.privacy_notice_shown = True
+
         def recognize():
             recognizer = sr.Recognizer()
-            with sr.Microphone() as source:
-                self.log_status("Listening for voice input...")
-                try:
-                    audio = recognizer.listen(source, timeout=5)
-                    text = recognizer.recognize_google(audio)
-                    self.text_entry.insert(tk.END, text)
-                    self.log_status(f"Voice recognized: {text}")
-                except sr.UnknownValueError:
-                    self.log_status("Could not understand the audio.")
-                except sr.RequestError:
-                    self.log_status("Speech Recognition service failed.")
-                except sr.WaitTimeoutError:
-                    self.log_status("Listening timed out.")
+
+            mic_names = sr.Microphone.list_microphone_names()
+            if not mic_names:
+                self.log_status("No microphone detected. Please connect a microphone.")
+                messagebox.showerror("Microphone Error", "No microphone detected. Please connect a microphone.")
+                return
+
+            try:
+                with sr.Microphone() as source:
+                    self.voice_status_label.config(text="🎙 Listening...", fg="orange")
+                    self.log_status("Listening for voice input...")
+                    audio = recognizer.listen(source, timeout=6)
+
+                self.voice_status_label.config(text="⏳ Processing...", fg="blue")
+                self.log_status("Processing voice input...")
+
+                text = recognizer.recognize_google(audio)
+                self.text_entry.insert(tk.END, text)
+                self.log_status(f"Voice recognized: {text}")
+                self.voice_status_label.config(text="✅ Done", fg="green")
+
+            except sr.WaitTimeoutError:
+                self.voice_status_label.config(text="⚠ Timeout", fg="red")
+                self.log_status("Listening timed out. Please try again.")
+                messagebox.showwarning("Timeout", "Listening timed out. Please try again.")
+
+            except sr.UnknownValueError:
+                self.voice_status_label.config(text="⚠ Couldn't understand", fg="red")
+                self.log_status("Could not understand the audio.")
+                messagebox.showwarning("Unrecognized Speech", "Could not understand the audio.")
+
+            except sr.RequestError as e:
+                self.voice_status_label.config(text="❌ API Error", fg="red")
+                self.log_status(f"Speech Recognition service failed: {e}")
+                messagebox.showerror("API Error", f"Speech Recognition service error: {e}")
+
+            except Exception as e:
+                self.voice_status_label.config(text="❌ Error", fg="red")
+                self.log_status(f"Unexpected error: {e}")
+                messagebox.showerror("Error", f"An unexpected error occurred: {e}")
 
         threading.Thread(target=recognize).start()
 
@@ -141,7 +173,7 @@ class StegaChatUI:
                     messagebox.showerror("Error", f"Encryption failed: {e}")
                     return
 
-            output_path = filedialog.asksaveasfilename(title="Save encoded image as", defaultextension=".png", filetypes=[("PNG files", "*.png"), ("All files", "*.*")])
+            output_path = filedialog.asksaveasfilename(title="Save encoded image as", defaultextension=".png", filetypes=[("PNG files", ".png"), ("All files", ".*")])
             if not output_path:
                 return
 
@@ -204,5 +236,4 @@ class StegaChatUI:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = StegaChatUI(root)
-    root.mainloop()
+    app = StegaChatUI(root) 
